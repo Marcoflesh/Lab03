@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Parking – Tec de Monterrey (Lab 3)</title>
+  <meta name="description" content="Simulated IoT smart parking dashboard for the Tec de Monterrey Querétaro parking lot.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+
+    <header class="top">
+      <div>
+        <h1>Smart Parking</h1>
+        <p class="sub">Tec de Monterrey, Querétaro campus. Simulated IoT sensor network.</p>
+      </div>
+      <p class="live" id="liveStatus" data-on="true">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="liveText">Sensors live</span>
+        <span class="live-time" id="lastReading">--:--:--</span>
+      </p>
+    </header>
+
+    <main class="layout">
+
+      <!-- Entrance sign: the headline number -->
+      <section class="sign" id="sign" data-state="plenty" aria-labelledby="signLabel">
+        <div class="sign-head">
+          <span class="sign-p" aria-hidden="true">P</span>
+          <h2 id="signLabel">Available spaces</h2>
+        </div>
+        <p class="sign-number" id="signNumber">0</p>
+        <p class="sign-state" id="signState">Plenty of space</p>
+      </section>
+
+      <!-- Map -->
+      <section class="map-card" aria-label="Parking lot map">
+        <div class="map-wrap" id="mapWrap">
+          <svg class="lot" id="lot" viewBox="0 0 672 550" role="group"
+               aria-label="Parking lot with 5 zones. Use the arrow keys to move between spaces and Enter to change a space's status.">
+            <defs>
+              <pattern id="busyHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="5" height="5" class="hatch-bg"/>
+                <line x1="0" y1="0" x2="0" y2="5" class="hatch-line"/>
+              </pattern>
+            </defs>
+            <image href="img/parking-lot.png" width="672" height="550"/>
+            <g id="spots"></g>
+            <g id="zoneLabels"></g>
+          </svg>
+          <div class="tip" id="tip" role="tooltip" hidden></div>
+        </div>
+        <div class="map-foot">
+          <ul class="legend">
+            <li><span class="swatch swatch-free"></span>Available</li>
+            <li><span class="swatch swatch-busy"></span>Occupied</li>
+          </ul>
+          <p class="hint">Click any space to override its sensor.</p>
+        </div>
+      </section>
+
+      <!-- Dashboard + controls + feed -->
+      <aside class="side" aria-label="Dashboard">
+        <section aria-labelledby="dashTitle">
+          <h2 class="block-title" id="dashTitle">Dashboard</h2>
+          <dl class="stats">
+            <div class="stat"><dt>Total spaces</dt><dd id="statTotal">0</dd></div>
+            <div class="stat"><dt>Occupied</dt><dd id="statBusy" class="c-busy">0</dd></div>
+            <div class="stat"><dt>Available</dt><dd id="statFree" class="c-free">0</dd></div>
+            <div class="stat"><dt>Occupancy</dt><dd id="statPct">0%</dd></div>
+          </dl>
+          <div class="meter" role="img" id="meter" aria-label="Occupancy">
+            <div class="meter-fill" id="meterFill"></div>
+          </div>
+        </section>
+
+        <section aria-labelledby="zonesTitle">
+          <h2 class="block-title" id="zonesTitle">Zones</h2>
+          <ul class="zones" id="zones"></ul>
+        </section>
+
+        <section aria-labelledby="ctrlTitle">
+          <h2 class="block-title" id="ctrlTitle">Sensor simulation</h2>
+          <div class="ctrl-row">
+            <label class="switch">
+              <input type="checkbox" id="autoToggle" checked>
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span>Automatic updates</span>
+            </label>
+            <label class="speed">
+              <span>Speed</span>
+              <select id="speed">
+                <option value="5000">Slow</option>
+                <option value="2500" selected>Normal</option>
+                <option value="1000">Fast</option>
+              </select>
+            </label>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btnRandom">Randomize</button>
+            <button type="button" id="btnFill">Fill lot</button>
+            <button type="button" id="btnEmpty">Empty lot</button>
+          </div>
+        </section>
+
+        <section aria-labelledby="feedTitle">
+          <h2 class="block-title" id="feedTitle">Sensor feed</h2>
+          <ol class="feed" id="feed"></ol>
+        </section>
+      </aside>
+
+    </main>
+
+    <footer class="foot">
+      <p>Lab 3. All readings are simulated; no physical sensors are connected.</p>
+    </footer>
+  </div>
+
+  <p class="sr-only" id="announce" aria-live="polite"></p>
+  <script src="js/script.js"></script>
+</body>
+</html>
