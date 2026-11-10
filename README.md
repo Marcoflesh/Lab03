@@ -12,7 +12,3 @@ Simulated IoT smart-parking dashboard for the Tec de Monterrey Querétaro lot. B
 
 ## Run locally
 Open `index.html` in a browser.
-
-## Publish with GitHub Pages
-Repository Settings → Pages → Source: *Deploy from a branch* → Branch: `main`, folder `/ (root)`.
-The site will be available at `https://marcoflesh.github.io/Lab03/`.
