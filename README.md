@@ -10,5 +10,3 @@ Simulated IoT smart-parking dashboard for the Tec de Monterrey Querétaro lot. B
 - Automatic sensor simulation (cars arrive and leave) with adjustable speed and a live sensor feed
 - All data is simulated; no hardware needed
 
-## Run locally
-Open `index.html` in a browser.
