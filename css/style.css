@@ -229,3 +229,60 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--sign); out
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Day clock */
+.clock {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px 40px; align-items: center;
+  margin-bottom: 18px; padding: 20px 32px 22px;
+  background: var(--ink); color: #fff; border-radius: 16px;
+}
+.clock-label { margin: 0; font-weight: 500; font-size: 1.05rem; color: #AFC0DA; }
+.clock-time {
+  margin: 0; font-family: var(--font-display); font-weight: 700; line-height: .92;
+  font-size: clamp(5.5rem, 13vw, 9.5rem); font-variant-numeric: tabular-nums; letter-spacing: .01em;
+}
+.clock-colon { display: inline-block; padding: 0 .04em; position: relative; top: -.04em; }
+.clock[data-playing="true"] .clock-colon { animation: colon 1s steps(1, end) infinite; }
+@keyframes colon { 50% { opacity: .25; } }
+
+.clock-side { display: grid; gap: 18px; min-width: 0; }
+.clock-ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.clock .speed { color: #fff; }
+.clock select { background: #fff; }
+.btn-play {
+  min-width: 110px; min-height: 46px; font-size: 1.05rem; font-weight: 600;
+  background: #fff; color: var(--ink); border-color: #fff;
+}
+.btn-play:hover { background: #FFD400; color: var(--ink); border-color: #FFD400; }
+.clock button:focus-visible, .clock select:focus-visible { outline: 3px solid #FFD400; outline-offset: 2px; }
+
+.clock-slider { min-width: 0; }
+#timeSlider {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 36px;
+  margin: 0; background: transparent; cursor: pointer; touch-action: pan-y;
+}
+#timeSlider::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: #3B507A; }
+#timeSlider::-moz-range-track { height: 12px; border-radius: 6px; background: #3B507A; }
+#timeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 34px; height: 34px; margin-top: -11px;
+  border-radius: 50%; background: #FFD400; border: 4px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#timeSlider::-moz-range-thumb {
+  width: 26px; height: 26px; border-radius: 50%; background: #FFD400; border: 4px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#timeSlider:focus-visible { outline: 3px solid #fff; outline-offset: 4px; border-radius: 6px; }
+.ticks {
+  display: flex; justify-content: space-between; list-style: none; margin: 2px 0 0; padding: 0 4px;
+  font-variant-numeric: tabular-nums; font-size: .9rem; color: #AFC0DA;
+}
+
+@media (max-width: 960px) {
+  .clock { grid-template-columns: minmax(0, 1fr); padding: 18px 20px 20px; }
+  .clock-time { font-size: 6rem; }
+}
+@media (max-width: 480px) {
+  .clock { border-radius: 12px; }
+  .clock-time { font-size: 5.2rem; }
+  .ticks li:nth-child(even) { visibility: hidden; }
+}

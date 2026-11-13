@@ -24,6 +24,34 @@
       </p>
     </header>
 
+    <section class="clock" id="clock" data-playing="true" aria-label="Day clock">
+      <div class="clock-face">
+        <p class="clock-label">Time of day</p>
+        <p class="clock-time" id="clockTime" role="timer" aria-live="off">
+          <span id="clockH">06</span><span class="clock-colon">:</span><span id="clockM">00</span>
+        </p>
+      </div>
+      <div class="clock-side">
+        <div class="clock-ctrl">
+          <button type="button" id="btnPlay" class="btn-play" aria-pressed="true">Pause</button>
+          <label class="speed">
+            <span>Speed</span>
+            <select id="clockSpeed">
+              <option value="10">Slow</option>
+              <option value="20" selected>Normal</option>
+              <option value="40">Fast</option>
+            </select>
+          </label>
+        </div>
+        <div class="clock-slider">
+          <input type="range" id="timeSlider" min="0" max="1439" step="1" value="360" aria-label="Time of day">
+          <ul class="ticks" aria-hidden="true">
+            <li>00</li><li>03</li><li>06</li><li>09</li><li>12</li><li>15</li><li>18</li><li>21</li><li>24</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <main class="layout">
 
       <!-- Entrance sign: the headline number -->
@@ -48,6 +76,7 @@
               </pattern>
             </defs>
             <image href="img/parking-lot.png" width="672" height="550"/>
+            <rect id="nightShade" width="672" height="550" fill="#0a1630" opacity="0" pointer-events="none"/>
             <g id="spots"></g>
             <g id="zoneLabels"></g>
           </svg>
@@ -58,7 +87,7 @@
             <li><span class="swatch swatch-free"></span>Available</li>
             <li><span class="swatch swatch-busy"></span>Occupied</li>
           </ul>
-          <p class="hint">Click any space to override its sensor.</p>
+          <p class="hint">Click any space to override its sensor. Pause the clock to keep your changes.</p>
         </div>
       </section>
 
@@ -84,23 +113,8 @@
 
         <section aria-labelledby="ctrlTitle">
           <h2 class="block-title" id="ctrlTitle">Sensor simulation</h2>
-          <div class="ctrl-row">
-            <label class="switch">
-              <input type="checkbox" id="autoToggle" checked>
-              <span class="switch-ui" aria-hidden="true"></span>
-              <span>Automatic updates</span>
-            </label>
-            <label class="speed">
-              <span>Speed</span>
-              <select id="speed">
-                <option value="5000">Slow</option>
-                <option value="2500" selected>Normal</option>
-                <option value="1000">Fast</option>
-              </select>
-            </label>
-          </div>
           <div class="btn-row">
-            <button type="button" id="btnRandom">Randomize</button>
+            <button type="button" id="btnRandom">Reshuffle</button>
             <button type="button" id="btnFill">Fill lot</button>
             <button type="button" id="btnEmpty">Empty lot</button>
           </div>
@@ -116,6 +130,7 @@
   </div>
 
   <p class="sr-only" id="announce" aria-live="polite"></p>
+  <script src="js/simulation.js"></script>
   <script src="js/script.js"></script>
 </body>
 </html>

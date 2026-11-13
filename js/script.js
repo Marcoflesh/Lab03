@@ -1,12 +1,12 @@
 /* Smart Parking – Tec de Monterrey (Lab 3)
-   All sensor data is simulated. */
+   Interface layer. All sensor data is simulated; the occupancy math lives in simulation.js. */
 (function () {
   "use strict";
 
   var SVG_NS = "http://www.w3.org/2000/svg";
+  var Sim = window.ParkingSimulation;
 
-  /* Geometry of the five parking bays, in the image's own coordinates (672 x 550).
-     Each bay has two columns of spaces along an axis running from "top" to "bottom". */
+  /* Geometry of the five parking bays, in the image's own coordinates (672 x 550). */
   var BAYS = [
     { id: "A", top: [132, 262], bottom: [238, 494], n: 20 },
     { id: "B", top: [218, 205], bottom: [334, 446], n: 21 },
@@ -16,17 +16,25 @@
   ];
   var COLUMN_OFFSETS = [-16, 15];
   var SPOT_WIDTH = 30;
-  var START_BUSY_CHANCE = 0.62;   // lot starts fairly busy
-  var TARGET_OCCUPANCY = 0.62;    // simulation drifts around this level
   var FEED_LIMIT = 8;
+  var TICK_MS = 250;            // sensor cadence
+  var START_MINUTE = 6 * 60;    // the day starts at 06:00
+  var MAX_PING = 40;            // limit flashing after big jumps
+  var CATCH_UP_BAND = 3;        // allowed gap (spaces) between lot and schedule while running
+  var CATCH_UP_STEP = 6;        // max corrections per tick while running
 
   var spots = [];
-  var timer = null;
+  var simMinutes = START_MINUTE;
+  var playing = true;
+  var dragging = false;
+  var resumeAfterDrag = false;
+  var lastFeedAt = 0;
 
   var el = {
     lot: document.getElementById("lot"),
     spotsG: document.getElementById("spots"),
     zoneG: document.getElementById("zoneLabels"),
+    shade: document.getElementById("nightShade"),
     wrap: document.getElementById("mapWrap"),
     tip: document.getElementById("tip"),
     sign: document.getElementById("sign"),
@@ -40,20 +48,34 @@
     meterFill: document.getElementById("meterFill"),
     zones: document.getElementById("zones"),
     feed: document.getElementById("feed"),
-    auto: document.getElementById("autoToggle"),
-    speed: document.getElementById("speed"),
     live: document.getElementById("liveStatus"),
     liveText: document.getElementById("liveText"),
     lastReading: document.getElementById("lastReading"),
-    announce: document.getElementById("announce")
+    announce: document.getElementById("announce"),
+    clock: document.getElementById("clock"),
+    clockH: document.getElementById("clockH"),
+    clockM: document.getElementById("clockM"),
+    play: document.getElementById("btnPlay"),
+    speed: document.getElementById("clockSpeed"),
+    slider: document.getElementById("timeSlider")
   };
 
   /* ---------- helpers ---------- */
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
-  function timeStr(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); }
-  function rand(min, max) { return min + Math.random() * (max - min); }
+  function hhmm(minutes) {
+    var m = Math.floor(minutes) % 1440;
+    return pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+  }
   function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
   function statusWord(s) { return s === "busy" ? "occupied" : "available"; }
+  function hours() { return simMinutes / 60; }
+  function shuffle(list) {
+    for (var i = list.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1)), t = list[i]; list[i] = list[j]; list[j] = t;
+    }
+    return list;
+  }
+  function withStatus(status) { return spots.filter(function (s) { return s.status === status; }); }
 
   /* ---------- build the lot ---------- */
   function buildLot() {
@@ -88,11 +110,7 @@
           r.classList.add("spot");
           el.spotsG.appendChild(r);
 
-          spots.push({
-            id: id, bay: bay.id, el: r,
-            status: Math.random() < START_BUSY_CHANCE ? "busy" : "free",
-            updated: new Date()
-          });
+          spots.push({ id: id, bay: bay.id, el: r, status: "free", updated: START_MINUTE });
         }
       });
 
@@ -142,9 +160,15 @@
       (s.status === "busy" ? "available" : "occupied") + ".");
   }
 
+  function ping(s) {
+    s.el.classList.remove("ping");
+    void s.el.getBoundingClientRect(); // restart the animation
+    s.el.classList.add("ping");
+  }
+
   function updateDashboard() {
     var total = spots.length;
-    var busy = spots.filter(function (s) { return s.status === "busy"; }).length;
+    var busy = withStatus("busy").length;
     var free = total - busy;
     var pct = Math.round((busy / total) * 100);
     var frac = busy / total;
@@ -160,7 +184,8 @@
     if (free === 0) { state = "full"; label = "Lot full"; }
     else if (frac >= 0.85) { state = "almost"; label = "Almost full"; }
     else if (frac >= 0.6) { state = "plenty"; label = "Filling up"; }
-    else { state = "plenty"; label = "Plenty of space"; }
+    else if (frac >= 0.25) { state = "plenty"; label = "Plenty of space"; }
+    else { state = "plenty"; label = "Almost empty"; }
     el.sign.setAttribute("data-state", state);
     el.meterFill.setAttribute("data-level", state);
     el.signState.textContent = label;
@@ -175,73 +200,116 @@
   }
 
   function addFeed(kind, text) {
-    var now = new Date();
     var li = document.createElement("li");
-    li.innerHTML = '<span class="dot ' + kind + '"></span><time>' + timeStr(now) + "</time><span>" + text + "</span>";
+    li.innerHTML = '<span class="dot ' + kind + '"></span><time>' + hhmm(simMinutes) + "</time><span>" + text + "</span>";
     el.feed.insertBefore(li, el.feed.firstChild);
     while (el.feed.children.length > FEED_LIMIT) el.feed.removeChild(el.feed.lastChild);
-    el.lastReading.textContent = timeStr(now);
   }
 
-  function ping(s) {
-    s.el.classList.remove("ping");
-    void s.el.getBoundingClientRect(); // restart the animation
-    s.el.classList.add("ping");
+  function renderClock() {
+    var m = Math.floor(simMinutes) % 1440;
+    el.clockH.textContent = pad(Math.floor(m / 60));
+    el.clockM.textContent = pad(m % 60);
+    if (!dragging) el.slider.value = m;
+    el.slider.setAttribute("aria-valuetext", hhmm(m));
+    el.lastReading.textContent = hhmm(m);
+    var shade = 0.5 * (1 - Sim.daylight(simMinutes / 60));
+    el.shade.setAttribute("opacity", shade.toFixed(3));
   }
 
   /* ---------- state changes ---------- */
-  function setStatus(s, status, source) {
-    if (s.status === status) return;
+  function flip(s, status) {
     s.status = status;
-    s.updated = new Date();
+    s.updated = simMinutes;
     paintSpot(s);
-    ping(s);
-    if (source === "manual") {
-      addFeed("info", "Manual override: <b>" + s.id + "</b> set to " + statusWord(status));
-    } else {
-      addFeed(status, status === "busy"
-        ? "Sensor <b>" + s.id + "</b> detected a vehicle"
-        : "Sensor <b>" + s.id + "</b> reports space clear");
-    }
-    updateDashboard();
   }
 
-  /* One simulated sensor event: a car arrives or leaves. */
-  function simulateEvent() {
-    var free = spots.filter(function (s) { return s.status === "free"; });
-    var busy = spots.filter(function (s) { return s.status === "busy"; });
-    var occ = busy.length / spots.length;
-    // drift toward the target occupancy
-    var pArrival = Math.min(0.8, Math.max(0.2, 0.5 + (TARGET_OCCUPANCY - occ) * 1.2));
-    var arrival = Math.random() < pArrival;
-    if (arrival && free.length === 0) arrival = false;
-    if (!arrival && busy.length === 0) arrival = true;
-    if (arrival) setStatus(pick(free), "busy", "sensor");
-    else setStatus(pick(busy), "free", "sensor");
+  /* Turn `list` of spaces into `status`; returns the count changed. */
+  function applyChanges(list, status, withPing) {
+    list.forEach(function (s, i) {
+      flip(s, status);
+      if (withPing && i < MAX_PING) ping(s);
+    });
+    return list.length;
+  }
+
+  function logSensor(s) {
+    var now = Date.now();
+    if (now - lastFeedAt < 900) return;   // keep the feed readable at high speed
+    lastFeedAt = now;
+    addFeed(s.status, s.status === "busy"
+      ? "Sensor <b>" + s.id + "</b> detected a vehicle"
+      : "Sensor <b>" + s.id + "</b> reports space clear");
+  }
+
+  /* Bring the lot to the number of cars the schedule expects at this hour. */
+  function syncToSchedule(exact) {
+    var target = Sim.busyCount(hours(), spots.length);
+    var diff = target - withStatus("busy").length;
+    var limit = exact ? Infinity : CATCH_UP_STEP;
+    if (!exact && Math.abs(diff) < CATCH_UP_BAND) return null;
+
+    var n = Math.min(Math.abs(diff), limit), moved = [];
+    if (diff > 0) {
+      moved = shuffle(withStatus("free")).slice(0, n);
+      applyChanges(moved, "busy", true);
+    } else if (diff < 0) {
+      moved = shuffle(withStatus("busy")).slice(0, n);
+      applyChanges(moved, "free", true);
+    }
+    return moved.length ? moved[0] : null;
+  }
+
+  /* Cars come and go even when the total stays about the same. */
+  function churn(dtSeconds) {
+    var events = Sim.poisson(Sim.churnPerSecond(hours()) * dtSeconds);
+    var first = null;
+    for (var i = 0; i < events; i++) {
+      var busy = withStatus("busy"), free = withStatus("free");
+      if (!busy.length || !free.length) break;
+      var leaving = pick(busy), arriving = pick(free);
+      flip(leaving, "free"); ping(leaving);
+      flip(arriving, "busy"); ping(arriving);
+      if (!first) first = arriving;
+    }
+    return first;
   }
 
   function tick() {
-    var events = 1 + Math.floor(Math.random() * 3);
-    for (var i = 0; i < events; i++) simulateEvent();
-    scheduleNext();
+    if (!playing) return;
+    var rate = parseFloat(el.speed.value);              // simulated minutes per real second
+    simMinutes = (simMinutes + rate * TICK_MS / 1000) % 1440;
+    var moved = syncToSchedule(false);
+    var arrived = churn(TICK_MS / 1000);
+    var show = arrived || moved;
+    if (show) logSensor(show);
+    updateDashboard();
+    renderClock();
   }
 
-  function scheduleNext() {
-    clearTimeout(timer);
-    if (!el.auto.checked) return;
-    var base = parseInt(el.speed.value, 10);
-    timer = setTimeout(tick, base * rand(0.6, 1.4));
+  function jumpTo(minutes) {
+    simMinutes = Math.min(1439, Math.max(0, minutes));
+    var before = withStatus("busy").length;
+    syncToSchedule(true);
+    var after = withStatus("busy").length;
+    addFeed("info", "Clock set to " + hhmm(simMinutes) + ": " + (after >= before ? "+" : "") + (after - before) + " vehicles");
+    updateDashboard();
+    renderClock();
   }
 
-  function setLive(on) {
+  function setPlaying(on) {
+    playing = on;
+    el.clock.setAttribute("data-playing", on ? "true" : "false");
+    el.play.textContent = on ? "Pause" : "Play";
+    el.play.setAttribute("aria-pressed", on ? "true" : "false");
     el.live.setAttribute("data-on", on ? "true" : "false");
     el.liveText.textContent = on ? "Sensors live" : "Sensors paused";
   }
 
-  function bulk(fn, message) {
+  function bulk(pickStatus, message) {
     spots.forEach(function (s) {
-      var next = fn();
-      if (s.status !== next) { s.status = next; s.updated = new Date(); paintSpot(s); }
+      var next = pickStatus();
+      if (s.status !== next) flip(s, next);
     });
     addFeed("info", message);
     updateDashboard();
@@ -256,12 +324,16 @@
   }
 
   function toggle(s) {
-    setStatus(s, s.status === "busy" ? "free" : "busy", "manual");
-    el.announce.textContent = "Space " + s.id + " is now " + statusWord(s.status) + ". " + el.free.textContent + " available.";
+    var next = s.status === "busy" ? "free" : "busy";
+    flip(s, next);
+    ping(s);
+    addFeed("info", "Manual override: <b>" + s.id + "</b> set to " + statusWord(next));
+    updateDashboard();
+    el.announce.textContent = "Space " + s.id + " is now " + statusWord(next) + ". " + el.free.textContent + " available.";
   }
 
   function showTip(s, x, y) {
-    el.tip.innerHTML = "<strong>" + s.id + "</strong>" + statusWord(s.status) + ", updated " + timeStr(s.updated);
+    el.tip.innerHTML = "<strong>" + s.id + "</strong>" + statusWord(s.status) + ", updated " + hhmm(s.updated);
     el.tip.hidden = false;
     el.tip.style.left = x + "px";
     el.tip.style.top = y + "px";
@@ -305,14 +377,36 @@
     }
   });
 
-  el.auto.addEventListener("change", function () {
-    setLive(el.auto.checked);
-    scheduleNext();
+  // clock controls
+  el.play.addEventListener("click", function () { setPlaying(!playing); });
+
+  el.slider.addEventListener("pointerdown", function () {
+    dragging = true;
+    resumeAfterDrag = playing;
+    if (playing) setPlaying(false);
   });
-  el.speed.addEventListener("change", scheduleNext);
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    if (resumeAfterDrag) setPlaying(true);
+    resumeAfterDrag = false;
+  }
+  el.slider.addEventListener("pointerup", endDrag);
+  el.slider.addEventListener("pointercancel", endDrag);
+  el.slider.addEventListener("input", function () {
+    jumpTo(parseInt(el.slider.value, 10));
+    el.announce.textContent = hhmm(simMinutes) + ", " + el.free.textContent + " spaces available.";
+  });
 
   document.getElementById("btnRandom").addEventListener("click", function () {
-    bulk(function () { return Math.random() < START_BUSY_CHANCE ? "busy" : "free"; }, "All sensors re-read (randomized)");
+    var target = Sim.busyCount(hours(), spots.length);
+    var order = shuffle(spots.slice());
+    order.forEach(function (s, i) {
+      var next = i < target ? "busy" : "free";
+      if (s.status !== next) flip(s, next);
+    });
+    addFeed("info", "All sensors re-read at " + hhmm(simMinutes));
+    updateDashboard();
   });
   document.getElementById("btnFill").addEventListener("click", function () {
     bulk(function () { return "busy"; }, "Every space marked occupied");
@@ -324,8 +418,10 @@
   /* ---------- start ---------- */
   buildZoneList();
   buildLot();
+  syncToSchedule(true);
   updateDashboard();
+  renderClock();
   addFeed("info", "Sensor network online: " + spots.length + " spaces");
-  setLive(true);
-  scheduleNext();
+  setPlaying(true);
+  setInterval(tick, TICK_MS);
 })();
